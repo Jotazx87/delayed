@@ -13,32 +13,49 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// ROTA DE PREVIEW LOCAL (COM CABEÇALHO FLV EM CACHE)
+// PREVIEW MJPEG NATIVO (IMUNE A TRAVAMENTOS DE DELAY)
 // ==========================================
-let previewClients = [];
-let flvHeaderChunks = [];
-let flvHeaderBytes = 0;
-const MAX_HEADER_BYTES = 16384; // Guarda os primeiros ~16KB (Header FLV + Sequence Headers H.264/AAC)
+let mjpegClients = [];
+let mjpegBuffer = Buffer.alloc(0);
 
-app.get('/preview.flv', (req, res) => {
+app.get('/preview.mjpg', (req, res) => {
   res.writeHead(200, {
-    'Content-Type': 'video/x-flv',
-    'Connection': 'keep-alive',
+    'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
     'Cache-Control': 'no-cache',
-    'Access-Control-Allow-Origin': '*'
+    'Connection': 'keep-alive',
+    'Pragma': 'no-cache'
   });
 
-  // Envia o cabeçalho inicial para o player conseguir decodificar o meio da live
-  flvHeaderChunks.forEach((chunk) => {
-    res.write(chunk);
-  });
-
-  previewClients.push(res);
+  mjpegClients.push(res);
 
   req.on('close', () => {
-    previewClients = previewClients.filter((client) => client !== res);
+    mjpegClients = mjpegClients.filter((client) => client !== res);
   });
 });
+
+function broadcastJpegChunk(chunk) {
+  mjpegBuffer = Buffer.concat([mjpegBuffer, chunk]);
+
+  let start = mjpegBuffer.indexOf(Buffer.from([0xff, 0xd8]));
+  let end = mjpegBuffer.indexOf(Buffer.from([0xff, 0xd9]), start + 2);
+
+  while (start !== -1 && end !== -1) {
+    const frame = mjpegBuffer.slice(start, end + 2);
+    mjpegBuffer = mjpegBuffer.slice(end + 2);
+
+    const header = `--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`;
+    mjpegClients.forEach((client) => {
+      if (!client.writableEnded) {
+        client.write(header);
+        client.write(frame);
+        client.write('\r\n');
+      }
+    });
+
+    start = mjpegBuffer.indexOf(Buffer.from([0xff, 0xd8]));
+    end = mjpegBuffer.indexOf(Buffer.from([0xff, 0xd9]), start + 2);
+  }
+}
 
 // ==========================================
 // ESTADO GLOBAL DO RELAY
@@ -63,16 +80,8 @@ let packetQueue = [];
 // ==========================================
 const delayProxy = net.createServer((clientSocket) => {
   console.log('[Proxy] Fluxo FLV entrou no motor de delay.');
-  flvHeaderChunks = [];
-  flvHeaderBytes = 0;
 
   clientSocket.on('data', (chunk) => {
-    // Captura os pacotes iniciais de cabeçalho do FLV
-    if (flvHeaderBytes < MAX_HEADER_BYTES) {
-      flvHeaderChunks.push(chunk);
-      flvHeaderBytes += chunk.length;
-    }
-
     packetQueue.push({
       data: chunk,
       timestamp: Date.now()
@@ -84,8 +93,6 @@ const delayProxy = net.createServer((clientSocket) => {
     console.log('[Proxy] Fluxo FLV encerrado.');
     packetQueue = [];
     config.bufferBytes = 0;
-    flvHeaderChunks = [];
-    flvHeaderBytes = 0;
   });
 
   clientSocket.on('error', (err) => console.error('[Proxy Erro]:', err.message));
@@ -104,12 +111,6 @@ setInterval(() => {
     if (ffmpegProcess && ffmpegProcess.stdin.writable) {
       ffmpegProcess.stdin.write(packet.data);
     }
-
-    previewClients.forEach((client) => {
-      if (!client.writableEnded) {
-        client.write(packet.data);
-      }
-    });
   }
 }, 20);
 
@@ -136,7 +137,7 @@ nms.on('donePublish', (id, StreamPath) => {
 nms.run();
 
 // ==========================================
-// 3. MOTOR DE SAÍDA MULTI-STREAM + PREVIEW
+// 3. MOTOR DE SAÍDA MULTI-STREAM + PREVIEW MJPEG
 // ==========================================
 function startOutputStream() {
   if (ffmpegProcess) return;
@@ -157,16 +158,27 @@ function startOutputStream() {
 
   bridgeFfmpeg.on('error', (err) => console.error('[Bridge Erro]:', err.message));
 
-  const outputArgs = targets.length > 0
-    ? ['-c', 'copy', '-f', 'tee', '-map', '0:v', '-map', '0:a', targets.join('|')]
-    : ['-c', 'copy', '-f', 'null', '-'];
-
-  ffmpegProcess = spawn('ffmpeg', [
-    '-re',
+  // Saída 1: Preview MJPEG (pipe:1) | Saída 2: Twitch/Kick (se configurado)
+  const args = [
     '-f', 'flv',
     '-i', 'pipe:0',
-    ...outputArgs
-  ]);
+    '-map', '0:v',
+    '-vf', 'fps=15,scale=640:-1',
+    '-q:v', '7',
+    '-f', 'mjpeg',
+    'pipe:1'
+  ];
+
+  if (targets.length > 0) {
+    args.push('-c', 'copy', '-f', 'tee', '-map', '0:v', '-map', '0:a', targets.join('|'));
+  }
+
+  ffmpegProcess = spawn('ffmpeg', args);
+
+  // Captura os frames JPEG atrasados e manda pro navegador
+  ffmpegProcess.stdout.on('data', (chunk) => {
+    broadcastJpegChunk(chunk);
+  });
 
   config.isLiveOut = true;
   io.emit('status', config);

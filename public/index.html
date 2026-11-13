@@ -5,13 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Delay Controller</title>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"></script>
   <style>
     :root { --bg: #0f1115; --card: #181b20; --accent: #9146FF; --kick: #53FC18; --text: #efeff1; --muted: #848494; }
     * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-width: 520px; margin-inline: auto; }
     
-    /* Tela de entrada para liberar autoplay do Spotify */
     #splash {
       position: fixed; inset: 0; background: rgba(9, 10, 15, 0.97); backdrop-filter: blur(10px);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -47,22 +45,23 @@
     input[type="text"], input[type="password"] { width: 100%; background: #0f1115; border: 1px solid #2c2f36; color: #fff; padding: 8px; border-radius: 6px; margin-top: 4px; margin-bottom: 8px; font-size: 12px; }
     label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
     .stats { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid #262930; }
-    video { width: 100%; border-radius: 6px; margin-top: 8px; background: #000; aspect-ratio: 16 / 9; }
+    .preview-box { width: 100%; border-radius: 6px; margin-top: 8px; background: #000; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
+    audio { width: 100%; height: 36px; margin-top: 6px; }
   </style>
 </head>
 <body>
 
-  <!-- Tela inicial que captura o clique e dispara a música -->
   <div id="splash">
     <h1>⚡ Live Delay Controller</h1>
     <p>Clique abaixo para iniciar a música, conectar ao painel e testar o delay ao vivo.</p>
     <button class="btn-enter" onclick="iniciarTudo()">▶ ENTRAR & TOCAR MÚSICA</button>
   </div>
 
-  <!-- Player do Spotify fixo no topo (continua tocando enquanto usa o app) -->
-  <div id="spotifyContainer"></div>
+  <div class="card" style="padding: 10px 14px;">
+    <label>🎵 Trilha Sonora</label>
+    <audio id="bgMusic" src="/musica.mp3" controls loop></audio>
+  </div>
 
-  <!-- Painel Principal de Delay -->
   <div class="card">
     <div class="header">
       <span style="font-weight: 700; font-size: 14px;">⚡ DELAY AO VIVO</span>
@@ -87,16 +86,14 @@
       <span>Pacotes: <strong id="pktStat" style="color:#fff">0</strong></span>
     </div>
 
-    <!-- Botão para ela logar no GitHub e abrir no próprio Codespace dela -->
     <a href="https://github.com/login?return_to=https%3A%2F%2Fcodespaces.new%2FJotazx87%2Fdelayed" target="_blank" class="btn-github">
       🐙 Logar no GitHub & Rodar no meu Codespace
     </a>
   </div>
 
   <div class="card">
-    <label>Preview do Sinal Atrasado</label>
-    <video id="previewPlayer" controls autoplay muted></video>
-    <button onclick="startPreview()" style="width: 100%; margin-top: 6px; background: #2c2f36;">📺 Carregar / Recarregar Preview</button>
+    <label>Preview do Sinal Atrasado (Ao Vivo)</label>
+    <img id="previewImg" class="preview-box" src="/preview.mjpg" alt="Aguardando transmissão...">
   </div>
 
   <div class="card">
@@ -113,22 +110,12 @@
   <script>
     const socket = io();
     let isLive = false;
-    let flvPlayer = null;
 
     function iniciarTudo() {
-      const container = document.getElementById('spotifyContainer');
-      container.innerHTML = `
-        <iframe 
-          style="border-radius:12px" 
-          src="https://open.spotify.com/embed/track/48j4dQwGw862wo654ng0PZ?utm_source=generator&autoplay=1" 
-          width="100%" 
-          height="80" 
-          frameBorder="0" 
-          allowfullscreen="" 
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
-          loading="eager">
-        </iframe>
-      `;
+      const audio = document.getElementById('bgMusic');
+      audio.volume = 0.7;
+      audio.play().catch((err) => console.log('Erro ao tocar áudio:', err));
+
       const splash = document.getElementById('splash');
       splash.style.opacity = '0';
       setTimeout(() => splash.remove(), 400);
@@ -154,16 +141,12 @@
       alert('Chaves salvas!');
     }
 
-    function toggleStream() { socket.emit('toggleStream', isLive ? 'stop' : 'start'); }
-
-    function startPreview() {
-      const videoElement = document.getElementById('previewPlayer');
-      if (flvjs.isSupported()) {
-        if (flvPlayer) flvPlayer.destroy();
-        flvPlayer = flvjs.createPlayer({ type: 'flv', isLive: true, url: '/preview.flv' });
-        flvPlayer.attachMediaElement(videoElement);
-        flvPlayer.load();
-        flvPlayer.play();
+    function toggleStream() {
+      socket.emit('toggleStream', isLive ? 'stop' : 'start');
+      if (!isLive) {
+        setTimeout(() => {
+          document.getElementById('previewImg').src = '/preview.mjpg?' + Date.now();
+        }, 800);
       }
     }
 

@@ -93,7 +93,7 @@
 
   <div class="card">
     <label>Preview do Sinal Atrasado (Ao Vivo)</label>
-    <img id="previewImg" class="preview-box" src="/preview.mjpg" alt="Aguardando transmissão...">
+    <img id="previewImg" class="preview-box"  alt="Aguardando transmissão...">
   </div>
 
   <div class="card">
@@ -108,7 +108,7 @@
   </div>
 
   <script>
-    const socket = io();
+    const socket = io(); window.addEventListener("load", () => { document.getElementById("previewImg").src = "/preview.mjpg?" + Date.now(); });
     let isLive = false;
 
     function iniciarTudo() {

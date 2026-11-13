@@ -13,7 +13,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==========================================
-// PREVIEW MJPEG NATIVO (IMUNE A TRAVAMENTOS DE DELAY)
+// PREVIEW MJPEG NATIVO
 // ==========================================
 let mjpegClients = [];
 let mjpegBuffer = Buffer.alloc(0);
@@ -57,9 +57,6 @@ function broadcastJpegChunk(chunk) {
   }
 }
 
-// ==========================================
-// ESTADO GLOBAL DO RELAY
-// ==========================================
 let config = {
   delaySeconds: 0,
   twitchKey: '',
@@ -75,17 +72,11 @@ let ffmpegProcess = null;
 let bridgeFfmpeg = null;
 let packetQueue = [];
 
-// ==========================================
-// 1. PROXY TCP DE DELAY DINÂMICO (Porta 1936)
-// ==========================================
 const delayProxy = net.createServer((clientSocket) => {
   console.log('[Proxy] Fluxo FLV entrou no motor de delay.');
 
   clientSocket.on('data', (chunk) => {
-    packetQueue.push({
-      data: chunk,
-      timestamp: Date.now()
-    });
+    packetQueue.push({ data: chunk, timestamp: Date.now() });
     config.bufferBytes += chunk.length;
   });
 
@@ -114,9 +105,6 @@ setInterval(() => {
   }
 }, 20);
 
-// ==========================================
-// 2. RECEPTOR DO OBS (Porta 1935)
-// ==========================================
 const nms = new NodeMediaServer({
   rtmp: { port: 1935, chunk_size: 60000, gop_cache: false, ping: 30, ping_timeout: 60 },
   logType: 1
@@ -126,19 +114,20 @@ nms.on('prePublish', (id, StreamPath) => {
   console.log('[OBS] Sinal conectado:', StreamPath);
   config.obsConnected = true;
   io.emit('status', config);
+  // Inicia o motor automaticamente assim que o sinal chega para liberar o preview
+  if (!ffmpegProcess) {
+    setTimeout(() => startOutputStream(), 500);
+  }
 });
 
 nms.on('donePublish', (id, StreamPath) => {
   console.log('[OBS] Sinal desconectado:', StreamPath);
   config.obsConnected = false;
-  io.emit('status', config);
+  stopOutputStream();
 });
 
 nms.run();
 
-// ==========================================
-// 3. MOTOR DE SAÍDA MULTI-STREAM + PREVIEW MJPEG
-// ==========================================
 function startOutputStream() {
   if (ffmpegProcess) return;
 
@@ -158,7 +147,6 @@ function startOutputStream() {
 
   bridgeFfmpeg.on('error', (err) => console.error('[Bridge Erro]:', err.message));
 
-  // Saída 1: Preview MJPEG (pipe:1) | Saída 2: Twitch/Kick (se configurado)
   const args = [
     '-f', 'flv',
     '-i', 'pipe:0',
@@ -175,7 +163,6 @@ function startOutputStream() {
 
   ffmpegProcess = spawn('ffmpeg', args);
 
-  // Captura os frames JPEG atrasados e manda pro navegador
   ffmpegProcess.stdout.on('data', (chunk) => {
     broadcastJpegChunk(chunk);
   });
@@ -201,9 +188,6 @@ function stopOutputStream() {
   io.emit('status', config);
 }
 
-// ==========================================
-// 4. WEBSOCKET DO PAINEL DE CONTROLE
-// ==========================================
 io.on('connection', (socket) => {
   socket.emit('status', config);
 

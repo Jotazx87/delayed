@@ -1,0 +1,26 @@
+{
+  "name": "delayed",
+  "version": "1.0.0",
+  "description": "App de instant delay",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jotazx87/delayed.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Jotazx87/delayed/issues"
+  },
+  "homepage": "https://github.com/Jotazx87/delayed#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "node-media-server": "^4.4.6",
+    "socket.io": "^4.8.4"
+  }
+}

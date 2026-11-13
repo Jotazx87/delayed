@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Delay Controller</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"></script>
+  <style>
+    :root { --bg: #0f1115; --card: #181b20; --accent: #9146FF; --kick: #53FC18; --text: #efeff1; --muted: #848494; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-width: 520px; margin-inline: auto; }
+    .card { background: var(--card); border-radius: 10px; padding: 14px; border: 1px solid #262930; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; background: #2c2f36; color: var(--muted); }
+    .badge.on { background: rgba(83, 252, 24, 0.15); color: var(--kick); border: 1px solid var(--kick); }
+    .delay-display { font-size: 42px; font-weight: 800; text-align: center; margin: 8px 0; color: #fff; }
+    .delay-display span { font-size: 18px; color: var(--muted); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; margin: 10px 0; }
+    .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+    button { background: #262930; color: #fff; border: none; padding: 8px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.15s; }
+    button:hover { background: #343842; }
+    .btn-live { width: 100%; padding: 12px; font-size: 14px; background: var(--accent); margin-top: 8px; }
+    .btn-live.stop { background: #e91916; }
+    input[type="text"], input[type="password"] { width: 100%; background: #0f1115; border: 1px solid #2c2f36; color: #fff; padding: 8px; border-radius: 6px; margin-top: 4px; margin-bottom: 8px; font-size: 12px; }
+    label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+    .stats { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid #262930; }
+    video { width: 100%; border-radius: 6px; margin-top: 8px; background: #000; aspect-ratio: 16 / 9; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="header">
+      <span style="font-weight: 700; font-size: 14px;">⚡ DELAY AO VIVO</span>
+      <div>
+        <span id="obsBadge" class="badge">OBS OFF</span>
+        <span id="liveBadge" class="badge">SAÍDA OFF</span>
+      </div>
+    </div>
+
+    <div class="delay-display" id="delayVal">0<span>s</span></div>
+    
+    <input type="range" id="delaySlider" min="0" max="120" step="5" value="0">
+    
+    <div class="presets">
+      <button onclick="setDelay(0)">0s (Real)</button>
+      <button onclick="setDelay(15)">15s</button>
+      <button onclick="setDelay(30)">30s</button>
+      <button onclick="setDelay(60)">60s</button>
+    </div>
+
+    <div class="stats">
+      <span>Buffer RAM: <strong id="ramStat" style="color:#fff">0.00 MB</strong></span>
+      <span>Pacotes: <strong id="pktStat" style="color:#fff">0</strong></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Preview do Sinal Atrasado</label>
+    <video id="previewPlayer" controls autoplay muted></video>
+    <button onclick="startPreview()" style="width: 100%; margin-top: 6px; background: #2c2f36;">📺 Carregar / Recarregar Preview</button>
+  </div>
+
+  <div class="card">
+    <label>Twitch Stream Key (Opcional no teste)</label>
+    <input type="password" id="twitchKey" placeholder="live_xxxxxxxxx">
+
+    <label>Kick Stream URL (Opcional no teste)</label>
+    <input type="text" id="kickUrl" placeholder="rtmps://fa723fc1b171.global-contribute.live-video.net/app">
+
+    <label>Kick Stream Key (Opcional no teste)</label>
+    <input type="password" id="kickKey" placeholder="sk_us-west-xxxxxxxx">
+
+    <button onclick="saveKeys()" style="width: 100%; background: #2c2f36;">💾 Salvar Chaves</button>
+    <button id="toggleBtn" class="btn-live" onclick="toggleStream()">▶ INICIAR TRANSMISSÃO</button>
+  </div>
+
+  <script>
+    const socket = io();
+    let isLive = false;
+    let flvPlayer = null;
+
+    const slider = document.getElementById('delaySlider');
+    const delayVal = document.getElementById('delayVal');
+
+    slider.addEventListener('input', (e) => {
+      delayVal.innerHTML = `${e.target.value}<span>s</span>`;
+    });
+
+    slider.addEventListener('change', (e) => {
+      setDelay(e.target.value);
+    });
+
+    function setDelay(sec) {
+      slider.value = sec;
+      delayVal.innerHTML = `${sec}<span>s</span>`;
+      socket.emit('updateDelay', sec);
+    }
+
+    function saveKeys() {
+      socket.emit('saveKeys', {
+        twitchKey: document.getElementById('twitchKey').value,
+        kickUrl: document.getElementById('kickUrl').value,
+        kickKey: document.getElementById('kickKey').value
+      });
+      alert('Chaves salvas na memória do servidor!');
+    }
+
+    function toggleStream() {
+      socket.emit('toggleStream', isLive ? 'stop' : 'start');
+    }
+
+    function startPreview() {
+      const videoElement = document.getElementById('previewPlayer');
+      if (flvjs.isSupported()) {
+        if (flvPlayer) {
+          flvPlayer.destroy();
+        }
+        flvPlayer = flvjs.createPlayer({
+          type: 'flv',
+          isLive: true,
+          url: '/preview.flv'
+        });
+        flvPlayer.attachMediaElement(videoElement);
+        flvPlayer.load();
+        flvPlayer.play();
+      } else {
+        alert('Seu navegador não suporta reprodução FLV via MediaSource.');
+      }
+    }
+
+    socket.on('status', (cfg) => {
+      isLive = cfg.isLiveOut;
+      document.getElementById('obsBadge').className = cfg.obsConnected ? 'badge on' : 'badge';
+      document.getElementById('obsBadge').innerText = cfg.obsConnected ? 'OBS ON' : 'OBS OFF';
+      
+      document.getElementById('liveBadge').className = cfg.isLiveOut ? 'badge on' : 'badge';
+      document.getElementById('liveBadge').innerText = cfg.isLiveOut ? 'NO AR' : 'SAÍDA OFF';
+
+      const btn = document.getElementById('toggleBtn');
+      btn.innerText = cfg.isLiveOut ? '⏹ PARAR TRANSMISSÃO' : '▶ INICIAR TRANSMISSÃO';
+      btn.className = cfg.isLiveOut ? 'btn-live stop' : 'btn-live';
+    });
+
+    socket.on('telemetry', (data) => {
+      document.getElementById('ramStat').innerText = `${data.bufferMB} MB`;
+      document.getElementById('pktStat').innerText = data.queuePackets;
+    });
+  </script>
+</body>
+</html>

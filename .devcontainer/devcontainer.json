@@ -1,0 +1,13 @@
+{
+  "name": "Live Delay Relay",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg && npm install",
+  "postAttachCommand": "node server.js",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Painel Live Delay",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

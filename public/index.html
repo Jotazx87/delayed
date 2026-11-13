@@ -10,6 +10,22 @@
     :root { --bg: #0f1115; --card: #181b20; --accent: #9146FF; --kick: #53FC18; --text: #efeff1; --muted: #848494; }
     * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { background: var(--bg); color: var(--text); margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-width: 520px; margin-inline: auto; }
+    
+    /* Tela de entrada para liberar autoplay do Spotify */
+    #splash {
+      position: fixed; inset: 0; background: rgba(9, 10, 15, 0.97); backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999; text-align: center; padding: 24px; transition: opacity 0.4s ease;
+    }
+    #splash h1 { font-size: 26px; margin: 0 0 10px 0; }
+    #splash p { color: var(--muted); margin: 0 0 24px 0; max-width: 380px; font-size: 14px; }
+    .btn-enter {
+      background: linear-gradient(135deg, var(--accent), #6441a5); color: #fff; border: none;
+      padding: 16px 34px; font-size: 16px; font-weight: 700; border-radius: 50px; cursor: pointer;
+      box-shadow: 0 0 25px rgba(145, 70, 255, 0.5); transition: transform 0.2s;
+    }
+    .btn-enter:hover { transform: scale(1.05); }
+
     .card { background: var(--card); border-radius: 10px; padding: 14px; border: 1px solid #262930; }
     .header { display: flex; justify-content: space-between; align-items: center; }
     .badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; background: #2c2f36; color: var(--muted); }
@@ -22,6 +38,12 @@
     button:hover { background: #343842; }
     .btn-live { width: 100%; padding: 12px; font-size: 14px; background: var(--accent); margin-top: 8px; }
     .btn-live.stop { background: #e91916; }
+    .btn-github {
+      display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+      background: #21262d; color: #f0f6fc; border: 1px solid #30363d; text-decoration: none;
+      padding: 10px; border-radius: 8px; font-weight: 700; font-size: 13px; margin-top: 8px;
+    }
+    .btn-github:hover { background: #30363d; }
     input[type="text"], input[type="password"] { width: 100%; background: #0f1115; border: 1px solid #2c2f36; color: #fff; padding: 8px; border-radius: 6px; margin-top: 4px; margin-bottom: 8px; font-size: 12px; }
     label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
     .stats { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid #262930; }
@@ -29,6 +51,18 @@
   </style>
 </head>
 <body>
+
+  <!-- Tela inicial que captura o clique e dispara a música -->
+  <div id="splash">
+    <h1>⚡ Live Delay Controller</h1>
+    <p>Clique abaixo para iniciar a música, conectar ao painel e testar o delay ao vivo.</p>
+    <button class="btn-enter" onclick="iniciarTudo()">▶ ENTRAR & TOCAR MÚSICA</button>
+  </div>
+
+  <!-- Player do Spotify fixo no topo (continua tocando enquanto usa o app) -->
+  <div id="spotifyContainer"></div>
+
+  <!-- Painel Principal de Delay -->
   <div class="card">
     <div class="header">
       <span style="font-weight: 700; font-size: 14px;">⚡ DELAY AO VIVO</span>
@@ -37,56 +71,91 @@
         <span id="liveBadge" class="badge">SAÍDA OFF</span>
       </div>
     </div>
+
     <div class="delay-display" id="delayVal">0<span>s</span></div>
     <input type="range" id="delaySlider" min="0" max="120" step="5" value="0">
+    
     <div class="presets">
       <button onclick="setDelay(0)">0s (Real)</button>
       <button onclick="setDelay(15)">15s</button>
       <button onclick="setDelay(30)">30s</button>
       <button onclick="setDelay(60)">60s</button>
     </div>
+
     <div class="stats">
       <span>Buffer RAM: <strong id="ramStat" style="color:#fff">0.00 MB</strong></span>
       <span>Pacotes: <strong id="pktStat" style="color:#fff">0</strong></span>
     </div>
+
+    <!-- Botão para ela logar no GitHub e abrir no próprio Codespace dela -->
+    <a href="https://github.com/login?return_to=https%3A%2F%2Fcodespaces.new%2FJotazx87%2Fdelayed" target="_blank" class="btn-github">
+      🐙 Logar no GitHub & Rodar no meu Codespace
+    </a>
   </div>
+
   <div class="card">
     <label>Preview do Sinal Atrasado</label>
     <video id="previewPlayer" controls autoplay muted></video>
     <button onclick="startPreview()" style="width: 100%; margin-top: 6px; background: #2c2f36;">📺 Carregar / Recarregar Preview</button>
   </div>
+
   <div class="card">
-    <label>Twitch Stream Key (Opcional no teste)</label>
+    <label>Twitch Stream Key (Opcional)</label>
     <input type="password" id="twitchKey" placeholder="live_xxxxxxxxx">
-    <label>Kick Stream URL (Opcional no teste)</label>
+    <label>Kick Stream URL (Opcional)</label>
     <input type="text" id="kickUrl" placeholder="rtmps://fa723fc1b171.global-contribute.live-video.net/app">
-    <label>Kick Stream Key (Opcional no teste)</label>
+    <label>Kick Stream Key (Opcional)</label>
     <input type="password" id="kickKey" placeholder="sk_us-west-xxxxxxxx">
     <button onclick="saveKeys()" style="width: 100%; background: #2c2f36;">💾 Salvar Chaves</button>
     <button id="toggleBtn" class="btn-live" onclick="toggleStream()">▶ INICIAR TRANSMISSÃO</button>
   </div>
+
   <script>
     const socket = io();
     let isLive = false;
     let flvPlayer = null;
+
+    function iniciarTudo() {
+      const container = document.getElementById('spotifyContainer');
+      container.innerHTML = `
+        <iframe 
+          style="border-radius:12px" 
+          src="https://open.spotify.com/embed/track/48j4dQwGw862wo654ng0PZ?utm_source=generator&autoplay=1" 
+          width="100%" 
+          height="80" 
+          frameBorder="0" 
+          allowfullscreen="" 
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+          loading="eager">
+        </iframe>
+      `;
+      const splash = document.getElementById('splash');
+      splash.style.opacity = '0';
+      setTimeout(() => splash.remove(), 400);
+    }
+
     const slider = document.getElementById('delaySlider');
     const delayVal = document.getElementById('delayVal');
     slider.addEventListener('input', (e) => { delayVal.innerHTML = `${e.target.value}<span>s</span>`; });
     slider.addEventListener('change', (e) => { setDelay(e.target.value); });
+
     function setDelay(sec) {
       slider.value = sec;
       delayVal.innerHTML = `${sec}<span>s</span>`;
       socket.emit('updateDelay', sec);
     }
+
     function saveKeys() {
       socket.emit('saveKeys', {
         twitchKey: document.getElementById('twitchKey').value,
         kickUrl: document.getElementById('kickUrl').value,
         kickKey: document.getElementById('kickKey').value
       });
-      alert('Chaves salvas na memória do servidor!');
+      alert('Chaves salvas!');
     }
+
     function toggleStream() { socket.emit('toggleStream', isLive ? 'stop' : 'start'); }
+
     function startPreview() {
       const videoElement = document.getElementById('previewPlayer');
       if (flvjs.isSupported()) {
@@ -97,6 +166,7 @@
         flvPlayer.play();
       }
     }
+
     socket.on('status', (cfg) => {
       isLive = cfg.isLiveOut;
       document.getElementById('obsBadge').className = cfg.obsConnected ? 'badge on' : 'badge';
@@ -107,6 +177,7 @@
       btn.innerText = cfg.isLiveOut ? '⏹ PARAR TRANSMISSÃO' : '▶ INICIAR TRANSMISSÃO';
       btn.className = cfg.isLiveOut ? 'btn-live stop' : 'btn-live';
     });
+
     socket.on('telemetry', (data) => {
       document.getElementById('ramStat').innerText = `${data.bufferMB} MB`;
       document.getElementById('pktStat').innerText = data.queuePackets;

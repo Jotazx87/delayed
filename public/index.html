@@ -46,20 +46,28 @@
     label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
     .stats { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid #262930; }
     .preview-box { width: 100%; border-radius: 6px; margin-top: 8px; background: #000; aspect-ratio: 16 / 9; object-fit: contain; display: block; }
-    audio { width: 100%; height: 36px; margin-top: 6px; }
   </style>
 </head>
 <body>
 
   <div id="splash">
     <h1>⚡ Live Delay Controller</h1>
-    <p>Clique abaixo para iniciar a música, conectar ao painel e testar o delay ao vivo.</p>
-    <button class="btn-enter" onclick="iniciarTudo()">▶ ENTRAR & TOCAR MÚSICA</button>
+    <p>Clique abaixo para carregar o player, conectar ao painel e testar o delay ao vivo.</p>
+    <button class="btn-enter" onclick="iniciarTudo()">▶ ENTRAR NO PAINEL</button>
   </div>
 
-  <div class="card" style="padding: 10px 14px;">
-    <label>🎵 Trilha Sonora</label>
-    <audio id="bgMusic" src="/musica.mp3" controls loop></audio>
+  <!-- Player oficial do Spotify -->
+  <div id="spotifyContainer">
+    <iframe 
+      style="border-radius:12px" 
+      src="https://open.spotify.com/embed/track/48j4dQwGw862wo654ng0PZ?utm_source=generator&theme=0" 
+      width="100%" 
+      height="80" 
+      frameBorder="0" 
+      allowfullscreen="" 
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+      loading="lazy">
+    </iframe>
   </div>
 
   <div class="card">
@@ -93,7 +101,7 @@
 
   <div class="card">
     <label>Preview do Sinal Atrasado (Ao Vivo)</label>
-    <img id="previewImg" class="preview-box"  alt="Aguardando transmissão...">
+    <img id="previewImg" class="preview-box" alt="Aguardando transmissão...">
   </div>
 
   <div class="card">
@@ -108,14 +116,14 @@
   </div>
 
   <script>
-    const socket = io(); window.addEventListener("load", () => { document.getElementById("previewImg").src = "/preview.mjpg?" + Date.now(); });
+    const socket = io();
     let isLive = false;
 
-    function iniciarTudo() {
-      const audio = document.getElementById('bgMusic');
-      audio.volume = 0.7;
-      audio.play().catch((err) => console.log('Erro ao tocar áudio:', err));
+    window.addEventListener('load', () => {
+      document.getElementById('previewImg').src = '/preview.mjpg?' + Date.now();
+    });
 
+    function iniciarTudo() {
       const splash = document.getElementById('splash');
       splash.style.opacity = '0';
       setTimeout(() => splash.remove(), 400);
